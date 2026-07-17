@@ -24,14 +24,25 @@ except ImportError:
     from recommender_enhanced import load_venue_database_enhanced, recommend_venues_enhanced
 from sklearn.feature_extraction.text import TfidfVectorizer
 
+
+# Cache TTL defaults (24h for analysis, 24h for recommendations by default)
+ANALYSIS_CACHE_TTL_SECONDS = int(os.getenv("ANALYSIS_CACHE_TTL_SECONDS", 24 * 60 * 60))
+RECOMMENDATION_CACHE_TTL_SECONDS = int(os.getenv("RECOMMENDATION_CACHE_TTL_SECONDS", 24 * 60 * 60))
+
+
 app = Flask(__name__)
 allowed_origins = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:3001").split(",") if origin.strip()]
 CORS(app, origins=allowed_origins)
+
+# NOTE: ensure the Flask server binds to the configured host/port in Docker
+flask_host = os.getenv("FLASK_HOST", "0.0.0.0")
+flask_port = int(os.getenv("FLASK_PORT", "5000"))
 redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 redis_connection = Redis.from_url(redis_url)
 analysis_queue = Queue("analysis", connection=redis_connection)
-ANALYSIS_CACHE_TTL_SECONDS = int(os.getenv("ANALYSIS_CACHE_TTL_SECONDS", 7 * 24 * 60 * 60))
+ANALYSIS_CACHE_TTL_SECONDS = int(os.getenv("ANALYSIS_CACHE_TTL_SECONDS", 24 * 60 * 60))
 RECOMMENDATION_CACHE_TTL_SECONDS = int(os.getenv("RECOMMENDATION_CACHE_TTL_SECONDS", 24 * 60 * 60))
+
 
 # Get the directory of the current file
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -63,6 +74,10 @@ try:
 except Exception as e:
     print(f"Error loading dataset: {e}")
     dataset = pd.DataFrame()
+
+
+
+
 
 # Load venue database for recommendations
 try:
@@ -476,7 +491,8 @@ def predict():
             return jsonify({"error": "Only PDF files are allowed"}), 400
 
         file_bytes = file.read()
-        file_hash = hash_bytes(file_bytes)
+        # Cache key based strictly on uploaded bytes
+        file_hash = hashlib.sha256(file_bytes).hexdigest()
 
         cached_result = cache_get_json(f"analysis:{file_hash}")
         if cached_result:
@@ -484,6 +500,7 @@ def predict():
             return jsonify(cached_result), 200
 
         text = extract_text_from_pdf(file_bytes)
+
 
         # Extract summary early
         summary = extract_summary(text)
@@ -544,16 +561,23 @@ def predict():
                     "score": float(similarity[i])
                 })
 
-        return jsonify({
+        result = {
             "score": float(score),
             "features": features,
             "similar_papers": similar_papers,
             "summary": summary,
             "recommendations": recommendations,
-            "domain_stats": domain_stats
-        })
+            "domain_stats": domain_stats,
+            "cached": False,
+        }
+
+        # TTL: 24 hours
+        cache_set_json(f"analysis:{file_hash}", result, 24 * 60 * 60)
+
+        return jsonify(result)
     
     except Exception as e:
+
         print(f"Error in predict endpoint: {str(e)}")
         import traceback
         traceback.print_exc()
@@ -622,12 +646,15 @@ def recommend():
         "paper_topic": paper_topic,
         "preferences": prefs,
     }
+
+    # Stable cache key for recommendation results
     cache_key = f"recommend:{hash_bytes(json.dumps(cache_payload, sort_keys=True, default=str))}"
 
     cached_result = cache_get_json(cache_key)
     if cached_result:
         cached_result["cached"] = True
         return jsonify(cached_result), 200
+
 
     if venue_db is None or getattr(venue_db, "empty", False):
         return jsonify({"error": "Venue database not available. Try again later."}), 503
@@ -649,4 +676,9 @@ def recommend():
     cache_set_json(cache_key, result, RECOMMENDATION_CACHE_TTL_SECONDS)
 
     return jsonify(result)
+
+
+if __name__ == "__main__":
+    app.run(host=flask_host, port=flask_port)
+
 
