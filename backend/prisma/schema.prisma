@@ -1,0 +1,49 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                   String                 @id @default(cuid())
+  email                String?                @unique
+  name                 String?
+  createdAt            DateTime               @default(now())
+  analyses             Analysis[]
+  cachedRecommendations CachedRecommendation[]
+}
+
+model Analysis {
+  id              String   @id @default(cuid())
+  jobId           String?  @unique
+  userId          String?
+  paperFilename   String
+  extractedScore  Float
+  features        Json
+  summary         String   @db.Text
+  createdAt       DateTime @default(now())
+
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+}
+
+model CachedRecommendation {
+  id              String   @id @default(cuid())
+  userId          String?
+  cacheKey        String   @unique
+  paperHash       String
+  preferencesHash String
+  requestPayload  Json
+  result          Json
+  createdAt       DateTime @default(now())
+  expiresAt       DateTime?
+
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([paperHash])
+  @@index([preferencesHash])
+}

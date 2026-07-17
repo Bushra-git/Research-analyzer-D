@@ -1,0 +1,328 @@
+/* Enhanced VenueRecommender Styles with Animations */
+
+/* Spinner Animation */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Pulse Animation for Loading */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Slide In Animation */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Fade In Animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Score Bar Fill Animation */
+@keyframes fillUp {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+/* Hover Effects for Cards */
+.venue-card-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.venue-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(30, 41, 59, 0.15) !important;
+}
+
+/* Filter Animations */
+.filter-group {
+  animation: slideIn 0.3s ease-out;
+}
+
+/* Results appear with stagger */
+.venue-card {
+  animation: fadeIn 0.4s ease-out;
+}
+
+.venue-card:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.venue-card:nth-child(2) {
+  animation-delay: 0.1s;
+}
+
+.venue-card:nth-child(3) {
+  animation-delay: 0.2s;
+}
+
+.venue-card:nth-child(4) {
+  animation-delay: 0.3s;
+}
+
+.venue-card:nth-child(5) {
+  animation-delay: 0.4s;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 1024px) {
+  .layout-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+  }
+
+  .scoring-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .scoring-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .venue-details-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  .venue-header {
+    flex-direction: column !important;
+  }
+
+  .score-badge {
+    align-self: flex-start !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .venue-details-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .action-links {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+
+  .compare-button {
+    width: 100% !important;
+  }
+}
+
+/* Loading State */
+.loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Success State */
+.success-badge {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* Tooltip Styles */
+.tooltip {
+  position: relative;
+  display: inline-block;
+  cursor: help;
+}
+
+.tooltip .tooltip-text {
+  visibility: hidden;
+  background-color: #1e293b;
+  color: #fff;
+  text-align: center;
+  padding: 8px 12px;
+  border-radius: 6px;
+  position: absolute;
+  z-index: 1;
+  bottom: 125%;
+  left: 50%;
+  margin-left: -50px;
+  opacity: 0;
+  transition: opacity 0.3s;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.tooltip:hover .tooltip-text {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Score Color Classes */
+.score-excellent {
+  color: #10b981;
+  font-weight: 700;
+}
+
+.score-good {
+  color: #f59e0b;
+  font-weight: 700;
+}
+
+.score-fair {
+  color: #ef4444;
+  font-weight: 700;
+}
+
+/* Badge Styles */
+.badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.badge-success {
+  background-color: #dbeafe;
+  color: #0369a1;
+}
+
+.badge-warning {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.badge-info {
+  background-color: #f3e8ff;
+  color: #7e22ce;
+}
+
+.badge-neutral {
+  background-color: #f1f5f9;
+  color: #475569;
+}
+
+/* Comparison Table */
+.comparison-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 16px;
+}
+
+.comparison-table th,
+.comparison-table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid rgba(30, 41, 59, 0.08);
+}
+
+.comparison-table th {
+  background-color: #f8fafc;
+  font-weight: 600;
+  color: #475569;
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.comparison-table tr:hover {
+  background-color: #f8fafc;
+}
+
+.comparison-table td {
+  font-size: 14px;
+  color: #475569;
+}
+
+/* List Item Hover */
+.list-item {
+  transition: background-color 0.2s;
+}
+
+.list-item:hover {
+  background-color: #f8fafc;
+}
+
+/* Form Control Focus States */
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Disabled State */
+input:disabled,
+select:disabled,
+textarea:disabled,
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed !important;
+}
+
+/* Text Truncation */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.truncate-2 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* Flex Utilities */
+.flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flex-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Print Styles */
+@media print {
+  .venue-card {
+    page-break-inside: avoid;
+    box-shadow: none;
+    border: 2px solid #1e293b;
+  }
+
+  .filter-header,
+  .action-bar,
+  .submit-button,
+  .compare-button {
+    display: none !important;
+  }
+}

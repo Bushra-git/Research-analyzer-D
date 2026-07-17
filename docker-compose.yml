@@ -1,0 +1,93 @@
+services:
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        REACT_APP_API_URL: http://localhost:3001
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      BACKEND_PORT: 3001
+      FLASK_API_URL: http://flask:5000
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001
+      DATABASE_URL: postgresql://research:research@postgres:5432/research_paper_analyzer
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "3001:3001"
+    depends_on:
+      - flask
+      - postgres
+      - redis
+    networks:
+      - app-network
+
+  flask:
+    build:
+      context: .
+    environment:
+      FLASK_HOST: 0.0.0.0
+      FLASK_PORT: 5000
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001
+      DATABASE_URL: postgresql://research:research@postgres:5432/research_paper_analyzer
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "5000:5000"
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - app-network
+
+  worker:
+    build:
+      context: .
+    command: ["python", "worker.py"]
+    environment:
+      FLASK_HOST: 0.0.0.0
+      FLASK_PORT: 5000
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:3001
+      DATABASE_URL: postgresql://research:research@postgres:5432/research_paper_analyzer
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - app-network
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: research
+      POSTGRES_PASSWORD: research
+      POSTGRES_DB: research_paper_analyzer
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  app-network:
+    driver: bridge
