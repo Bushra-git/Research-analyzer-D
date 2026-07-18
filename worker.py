@@ -2,7 +2,8 @@ import os
 
 from rq import Worker
 
-from app import analysis_queue, redis_connection
+from queue_resources import analysis_queue, redis_connection
+
 
 
 if __name__ == "__main__":

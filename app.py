@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+
 import pickle
 import pandas as pd
 import fitz
@@ -17,6 +18,9 @@ from redis import Redis
 from rq import Queue
 from rq.job import Job
 from rq.exceptions import NoSuchJobError
+
+from analysis_tasks import process_paper_analysis
+
 # Import enhanced recommender with ASJC-based scoring (v2 with proper dataset integration)
 try:
     from recommender_enhanced_v2 import load_venue_database_enhanced, recommend_venues_enhanced
@@ -90,6 +94,7 @@ except Exception as e:
 # Load TF-IDF vectorizer for recommendation topic matching
 global_vectorizer = None
 
+
 # Domain keywords for paper classification
 DOMAIN_KEYWORDS_SIMPLE = {
     "Computer Science & AI": ["machine learning", "ai", "artificial intelligence", "neural network", "deep learning", "algorithm", "database", "software"],
@@ -141,63 +146,8 @@ def cache_set_json(key, value, ttl_seconds):
     redis_connection.setex(key, ttl_seconds, json.dumps(value))
 
 
-def process_paper_analysis(file_bytes, file_name="uploaded.pdf"):
-    text = extract_text_from_pdf(file_bytes)
+# process_paper_analysis moved to analysis_tasks.py
 
-    summary = extract_summary(text)
-    features = extract_features(text)
-    features_df = pd.DataFrame([features])
-    domain_stats = get_domain_stats(text)
-
-    if model is None:
-        print("Warning: Model not loaded, using default scoring")
-        score = 6.5
-    else:
-        score = model.predict(features_df)[0]
-
-    words = text.split()
-    if len(words) > 0:
-        unique_ratio = len(set(words)) / len(words)
-        if unique_ratio < 0.4:
-            score -= 2
-
-    score = max(0, min(10, score))
-    recommendations = generate_recommendations(text, features, score)
-
-    from sklearn.feature_extraction.text import TfidfVectorizer
-    from sklearn.metrics.pairwise import cosine_similarity
-
-    docs_for_comparison = []
-    if not dataset.empty and 'Source Title' in dataset.columns:
-        docs_for_comparison = dataset["Source Title"].fillna("").tolist()
-
-    all_docs = docs_for_comparison.copy() if docs_for_comparison else [""]
-    all_docs.insert(0, text)
-
-    vectorizer = TfidfVectorizer(max_features=500)
-    tfidf = vectorizer.fit_transform(all_docs)
-
-    similarity = cosine_similarity(tfidf)[0]
-    top_indices = similarity.argsort()[-6:][::-1][1:]
-
-    similar_papers = []
-    for i in top_indices:
-        if i - 1 >= 0 and i - 1 < len(dataset):
-            title_col = "Source Title" if "Source Title" in dataset.columns else "title"
-            similar_papers.append({
-                "title": str(dataset.iloc[i - 1][title_col])[:100],
-                "score": float(similarity[i])
-            })
-
-    return {
-        "score": float(score),
-        "features": features,
-        "similar_papers": similar_papers,
-        "summary": summary,
-        "recommendations": recommendations,
-        "domain_stats": domain_stats,
-        "file_name": file_name,
-    }
 
 # Extract features
 def extract_features(text):

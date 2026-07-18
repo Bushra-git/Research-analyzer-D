@@ -164,7 +164,7 @@ app.post("/api/analyze", upload.single("file"), async (req, res) => {
     formData.append("file", req.file.buffer, "file.pdf");
 
     const response = await axios.post(
-      `${FLASK_API_URL}/predict`,
+      `${FLASK_API_URL}/analyze`,
       formData,
       {
         headers: {
@@ -174,7 +174,9 @@ app.post("/api/analyze", upload.single("file"), async (req, res) => {
       }
     );
 
+    // Flask /analyze returns { job_id, status, status_url }
     res.json(response.data);
+
   } catch (error) {
     const status = error.response?.status || 500;
     const message = error.response?.data?.error || error.message || "Error processing file";
