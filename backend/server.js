@@ -52,15 +52,20 @@ app.use(
     methods: ["GET", "POST", "OPTIONS"],
   })
 );
-app.use(
-  rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 100,
-    standardHeaders: true,
-    legacyHeaders: false,
-  })
-);
+// Rate limit only expensive/abusable endpoints.
+// Polling (/api/status/:jobId) is intentionally excluded because it is frequent/low-cost.
+const apiRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 app.use(express.json());
+
+app.post('/api/analyze', apiRateLimiter);
+app.post('/api/recommend', apiRateLimiter);
+
 
 const validateRecommendationBody = (body) => {
   if (!body || typeof body !== "object") {

@@ -17,11 +17,19 @@ function App() {
       const status = response.data?.status;
 
       if (status === "finished" && response.data?.result) {
+        if (response.data.result?.error) {
+          setError(response.data.result.error);
+          setData(null);
+          setLoading(false);
+          return;
+        }
+
         setData(response.data.result);
         setActiveTab("analysis");
         setLoading(false);
         return;
       }
+
 
       if (status === "failed") {
         setError(response.data?.error || "Analysis job failed");

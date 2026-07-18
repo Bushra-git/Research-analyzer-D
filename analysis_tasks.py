@@ -136,6 +136,7 @@ def _load_model_and_dataset() -> None:
     # Load analysis dataset
     try:
         csv_path = os.path.join(current_dir, "datasets", "ext_venues_active.csv")
+
         if not os.path.exists(csv_path):
             csv_path = os.path.join(current_dir, "datasets", "ext_venues_full.csv")
 
@@ -313,31 +314,73 @@ def get_domain_stats(text: str) -> Dict[str, Any]:
     if not _DATASET.empty:
         domain_stats["total_venues"] = len(_DATASET)
 
+        # Try to count OA venues (prefer boolean Is_Open_Access)
         try:
-            domain_stats["oa_count"] = len(
-                _DATASET[_DATASET.get("OA Status", pd.Series()).str.contains("OA", case=False, na=False)]
-            )
-        except Exception:
+            if "Is_Open_Access" in _DATASET.columns:
+                domain_stats["oa_count"] = int(_DATASET["Is_Open_Access"].fillna(False).astype(bool).sum())
+            else:
+                oa_series = _DATASET.get("Open Access Status", pd.Series(dtype=object))
+                domain_stats["oa_count"] = len(
+                    oa_series.astype(str).str.contains("OA|open access", case=False, na=False)
+                )
+
+        except Exception as e:
+            print(f"[WARN] oa_count computation failed: {e}")
             domain_stats["oa_count"] = 0
 
+        # Try to count Medline venues (use real Medline column)
         try:
-            domain_stats["medline_count"] = len(
-                _DATASET[_DATASET.get("Medline Coverage", pd.Series()).str.contains("Yes|Indexed", case=False, na=False)]
-            )
-        except Exception:
+            med_col = "Medline-sourced Title? (See additional details under separate tab.)"
+            if med_col in _DATASET.columns:
+                # Real dataset values are exactly:
+                # - NaN (missing) / 26339 rows
+                # - "Medline" / 4862 rows
+                # - "Medline-unique" / 53 rows
+                # There are NO "Yes" / "Indexed" strings.
+                med_series = _DATASET[med_col]
+                domain_stats["medline_count"] = int(
+                    med_series.notna().values.sum()
+                    - med_series.isna().values.sum()
+                )
+
+                # More robust: count only the two expected string categories.
+                domain_stats["medline_count"] = int(
+                    med_series.fillna("").astype(str).isin(["Medline", "Medline-unique"]).sum()
+                )
+            else:
+                # Fallback to older schema if present.
+                med_series = _DATASET.get("Medline Coverage", pd.Series(dtype=object))
+                domain_stats["medline_count"] = len(
+                    med_series.astype(str).str.contains("Yes|Indexed", case=False, na=False)
+                )
+        except Exception as e:
+            print(f"[WARN] medline_count computation failed: {e}")
             domain_stats["medline_count"] = 0
 
-        try:
-            domain_stats["active_count"] = len(
-                _DATASET[_DATASET.get("Status", pd.Series()).str.contains("Active", case=False, na=False)]
-            )
-        except Exception:
-            domain_stats["active_count"] = len(_DATASET)
 
+        # Try to count active venues (prefer boolean Is_Active)
         try:
-            domain_stats["publishers_count"] = _DATASET.get("Publisher", pd.Series()).nunique()
-        except Exception:
+            if "Is_Active" in _DATASET.columns:
+                domain_stats["active_count"] = int(_DATASET["Is_Active"].fillna(False).astype(bool).sum())
+            else:
+                status_series = _DATASET.get("Active or Inactive", pd.Series(dtype=object))
+                domain_stats["active_count"] = len(
+                    status_series.astype(str).str.contains("active", case=False, na=False)
+                )
+        except Exception as e:
+            print(f"[WARN] active_count computation failed: {e}")
+            domain_stats["active_count"] = 0
+
+        # Count publishers
+        try:
+            if "Publisher" in _DATASET.columns:
+                domain_stats["publishers_count"] = int(_DATASET["Publisher"].nunique())
+            else:
+                domain_stats["publishers_count"] = 0
+        except Exception as e:
+            print(f"[WARN] publishers_count computation failed: {e}")
             domain_stats["publishers_count"] = 0
+
 
         domain_stats["matching_venues"] = int(len(_DATASET) * 0.3)
 
@@ -513,9 +556,18 @@ def generate_recommendations(text: str, features: Dict[str, Any], score: float) 
 def process_paper_analysis(file_bytes: bytes, file_name: str = "uploaded.pdf") -> Dict[str, Any]:
     text = extract_text_from_pdf(file_bytes)
 
+    # Guard: scanned/corrupted PDFs may yield empty/near-empty text.
+    # In that case, stop early and return a clear error payload.
+    if len((text or "").split()) < 50:
+        return {
+            "error": "Could not extract readable text from this PDF. It may be a scanned image without OCR text, corrupted, or empty.",
+            "file_name": file_name,
+        }
+
     summary = extract_summary(text)
     features = extract_features(text)
     domain_stats = get_domain_stats(text)
+
 
     # Model scoring
     if _MODEL is None:

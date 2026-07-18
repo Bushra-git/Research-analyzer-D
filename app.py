@@ -235,29 +235,60 @@ def get_domain_stats(text):
         # Count total statistics
         domain_stats["total_venues"] = len(dataset)
         
-        # Try to count OA venues
+        # Try to count OA venues (prefer boolean Is_Open_Access)
         try:
-            domain_stats["oa_count"] = len(dataset[dataset.get("OA Status", pd.Series()).str.contains("OA", case=False, na=False)])
-        except:
+            if "Is_Open_Access" in dataset.columns:
+                domain_stats["oa_count"] = int(dataset["Is_Open_Access"].fillna(False).astype(bool).sum())
+            else:
+                # Fallback to legacy string-based matching
+                oa_series = dataset.get("Open Access Status", pd.Series(dtype=object))
+                domain_stats["oa_count"] = len(oa_series.astype(str).str.contains("OA|open access", case=False, na=False))
+        except Exception as e:
+            print(f"[WARN] oa_count computation failed: {e}")
             domain_stats["oa_count"] = 0
-        
-        # Try to count Medline venues
+
+        # Try to count Medline venues (use real Medline column)
         try:
-            domain_stats["medline_count"] = len(dataset[dataset.get("Medline Coverage", pd.Series()).str.contains("Yes|Indexed", case=False, na=False)])
-        except:
+            med_col = "Medline-sourced Title? (See additional details under separate tab.)"
+            if med_col in dataset.columns:
+                s = dataset[med_col].fillna(False)
+                # Handle common representations (bool, 'Yes'/'No', 'True'/'1')
+                if s.dtype == bool:
+                    domain_stats["medline_count"] = int(s.sum())
+                else:
+                    domain_stats["medline_count"] = int(
+                        s.astype(str).str.lower().isin(["true", "1", "yes", "y"]).sum()
+                    )
+            else:
+                # Fallback to legacy column name
+                med_series = dataset.get("Medline Coverage", pd.Series(dtype=object))
+                domain_stats["medline_count"] = len(med_series.astype(str).str.contains("Yes|Indexed", case=False, na=False))
+        except Exception as e:
+            print(f"[WARN] medline_count computation failed: {e}")
             domain_stats["medline_count"] = 0
-        
-        # Try to count active venues
+
+        # Try to count active venues (prefer boolean Is_Active)
         try:
-            domain_stats["active_count"] = len(dataset[dataset.get("Status", pd.Series()).str.contains("Active", case=False, na=False)])
-        except:
-            domain_stats["active_count"] = len(dataset)
-        
-        # Count publishers
+            if "Is_Active" in dataset.columns:
+                domain_stats["active_count"] = int(dataset["Is_Active"].fillna(False).astype(bool).sum())
+            else:
+                # Fallback to legacy string-based matching
+                status_series = dataset.get("Active or Inactive", pd.Series(dtype=object))
+                domain_stats["active_count"] = len(status_series.astype(str).str.contains("active", case=False, na=False))
+        except Exception as e:
+            print(f"[WARN] active_count computation failed: {e}")
+            domain_stats["active_count"] = 0
+
+        # Count publishers (safe)
         try:
-            domain_stats["publishers_count"] = dataset.get("Publisher", pd.Series()).nunique()
-        except:
+            if "Publisher" in dataset.columns:
+                domain_stats["publishers_count"] = int(dataset["Publisher"].nunique())
+            else:
+                domain_stats["publishers_count"] = 0
+        except Exception as e:
+            print(f"[WARN] publishers_count computation failed: {e}")
             domain_stats["publishers_count"] = 0
+
         
         # For now, set matching_venues as domain percentage (this can be enhanced)
         domain_stats["matching_venues"] = int(len(dataset) * 0.3)  # Estimate ~30% match to domain
