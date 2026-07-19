@@ -34,8 +34,9 @@ import pandas as pd
 import numpy as np
 import os
 import re
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+# sklearn/scipy imports are intentionally deferred to avoid hard import-time failures
+# in environments where NumPy/SciPy binary compatibility is broken.
+
 
 
 # ============================================================================

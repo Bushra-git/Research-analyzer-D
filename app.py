@@ -25,10 +25,10 @@ from analysis_tasks import process_paper_analysis
 # In CI/test environments, sklearn/scipy wheels may be incompatible with the installed NumPy.
 # In that case, importing the recommender can fail with non-ImportError exceptions.
 try:
-    from recommender_enhanced_v2 import load_venue_database_enhanced, recommend_venues_enhanced
+    from recommender_full import load_venue_database_enhanced, recommend_venues_enhanced
 except Exception:
     try:
-        from recommender_enhanced import load_venue_database_enhanced, recommend_venues_enhanced
+        from recommender_lite import load_venue_database_enhanced, recommend_venues_enhanced
     except Exception:
         load_venue_database_enhanced = None
         recommend_venues_enhanced = None
@@ -55,8 +55,6 @@ flask_port = int(os.getenv("FLASK_PORT", "5000"))
 redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 redis_connection = Redis.from_url(redis_url)
 analysis_queue = Queue("analysis", connection=redis_connection)
-ANALYSIS_CACHE_TTL_SECONDS = int(os.getenv("ANALYSIS_CACHE_TTL_SECONDS", 24 * 60 * 60))
-RECOMMENDATION_CACHE_TTL_SECONDS = int(os.getenv("RECOMMENDATION_CACHE_TTL_SECONDS", 24 * 60 * 60))
 
 
 # Get the directory of the current file
