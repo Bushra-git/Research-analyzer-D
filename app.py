@@ -445,38 +445,27 @@ def predict():
         # Generate recommendations based on analysis
         recommendations = generate_recommendations(text, features, score)
 
-        # Similarity matching (best-effort)
-        # In some CI/test environments, sklearn/scipy may be unavailable due to binary incompatibilities.
+        # Similarity matching (best-effort, narrow + shared)
         similar_papers = []
         try:
-            if TfidfVectorizer is None:
-                raise ImportError("TfidfVectorizer unavailable")
+            from similarity_matching import compute_similar_papers
 
-            from sklearn.metrics.pairwise import cosine_similarity
+            domain_for_similarity = domain_stats.get("domain") if isinstance(domain_stats, dict) else None
 
-            docs_for_comparison = []
-            if not dataset.empty and 'Source Title' in dataset.columns:
-                docs_for_comparison = dataset["Source Title"].fillna("").tolist()
+            similar_papers = compute_similar_papers(
+                paper_text=text,
+                dataset=dataset,
+                detected_domain=domain_for_similarity,
+                top_k=5,
+                prefilter_threshold=20,
+            )
 
-            all_docs = docs_for_comparison.copy() if docs_for_comparison else [""]
-            all_docs.insert(0, text)
-
-            vectorizer = TfidfVectorizer(max_features=500)
-            tfidf = vectorizer.fit_transform(all_docs)
-
-            similarity = cosine_similarity(tfidf)[0]
-            top_indices = similarity.argsort()[-6:][::-1][1:]
-
-            for i in top_indices:
-                if i - 1 >= 0 and i - 1 < len(dataset):
-                    title_col = "Source Title" if "Source Title" in dataset.columns else "title"
-                    similar_papers.append({
-                        "title": str(dataset.iloc[i - 1][title_col])[:100],
-                        "score": float(similarity[i])
-                    })
+            # Strip debug-only breadcrumb
+            for sp in similar_papers:
+                sp.pop("_used_full_set", None)
         except Exception:
-            # Keep empty similar_papers when sklearn is not available
             pass
+
 
         result = {
             "score": float(score),

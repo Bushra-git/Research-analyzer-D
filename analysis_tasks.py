@@ -703,41 +703,31 @@ def process_paper_analysis(file_bytes: bytes, file_name: str = "uploaded.pdf") -
     score = max(0, min(10, score))
     recommendations = generate_recommendations(text, features, score)
 
-    # Similarity matching (kept equivalent to existing logic)
-    docs_for_comparison = []
-    if not _DATASET.empty and "Source Title" in _DATASET.columns:
-        docs_for_comparison = _DATASET["Source Title"].fillna("").tolist()
+    # Similarity matching + recommendations (isolated + reusable)
+    try:
+        from similarity_matching import compute_similar_papers
 
-    all_docs = docs_for_comparison.copy() if docs_for_comparison else [""]
-    all_docs.insert(0, text)
+        domain_for_similarity = domain_stats.get("domain") if isinstance(domain_stats, dict) else None
 
-    # Similarity matching is optional in restricted environments (e.g., when sklearn/scipy wheels
-    # are incompatible). Tests mock the endpoints; in production we expect sklearn to be available.
-    if TfidfVectorizer is None or cosine_similarity is None:
+        similar_papers = compute_similar_papers(
+            paper_text=text,
+            dataset=_DATASET,
+            detected_domain=domain_for_similarity,
+            top_k=5,
+            prefilter_threshold=20,
+        )
+
+        # compute_similar_papers returns [{title, score, _used_full_set?}]
+        # analysis_tasks historically returned top ~5 similar titles.
+        # Remove debug-only breadcrumb.
+        for sp in similar_papers:
+            sp.pop("_used_full_set", None)
+
+    except Exception as e:
+        # Best-effort fallback: keep older behavior when TF-IDF deps are missing.
+        print(f"[WARN] similarity matching failed: {e}")
         similar_papers = []
-    else:
-        vectorizer = TfidfVectorizer(max_features=500)
-        tfidf = vectorizer.fit_transform(all_docs)
 
-        similarity = cosine_similarity(tfidf)[0]
-
-    # If similarity matching is disabled, similarity will not exist.
-    if TfidfVectorizer is None or cosine_similarity is None:
-        top_indices = []
-    else:
-        top_indices = similarity.argsort()[-6:][::-1][1:]
-
-    similar_papers = []
-
-    for i in top_indices:
-        if i - 1 >= 0 and i - 1 < len(_DATASET):
-            title_col = "Source Title" if "Source Title" in _DATASET.columns else "title"
-            similar_papers.append(
-                {
-                    "title": str(_DATASET.iloc[i - 1][title_col])[:100],
-                    "score": float(similarity[i]),
-                }
-            )
 
     return {
         "score": float(score),
