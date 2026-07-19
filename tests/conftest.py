@@ -1,5 +1,13 @@
-import pytest
+import os
+import sys
 from types import SimpleNamespace
+
+import pytest
+
+# Ensure repo root is importable so `import app` works during pytest.
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
 
 
 @pytest.fixture

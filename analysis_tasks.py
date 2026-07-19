@@ -43,8 +43,11 @@ def _current_dir() -> str:
 _MODEL = None
 _DATASET = pd.DataFrame()
 
+from domain_detection import DOMAIN_KEYWORDS_SIMPLE, get_domain_stats as _shared_get_domain_stats
+
 # Domain keywords for paper classification (mirrors app.py)
 DOMAIN_KEYWORDS_SIMPLE = {
+
     "Computer Science & AI": [
         "machine learning",
         "ai",
@@ -295,17 +298,57 @@ def extract_summary(text: str, max_sentences: int = 5) -> str:
     return summary
 
 
-def get_domain_stats(text: str) -> Dict[str, Any]:
+
+    # Keep analysis_tasks' dataset-aware matching logic intact; delegate only keyword counting
+    # and keep downstream dataset-specific counts here.
+
     text_lower = (text or "").lower()
 
+    # Exact phrase matching with word boundaries to avoid substring false-positives.
+    # Example: avoid matching "ai" inside "explain" or "contains".
     domain_scores: Dict[str, int] = {}
     for domain, keywords in DOMAIN_KEYWORDS_SIMPLE.items():
-        score = sum(text_lower.count(keyword) for keyword in keywords)
-        if score > 0:
-            domain_scores[domain] = score
+        total = 0
+        for keyword in keywords:
+            kw = (keyword or "").lower().strip()
+            if not kw:
+                continue
+
+            # Phrase keywords (contain spaces) use exact word-boundary matching.
+            # Single-word keywords use a light suffix-tolerant match to catch common variants
+            # like "synthesized" vs "synthesis" without enabling risky substring matches.
+            if " " in kw:
+                pattern = r"\\b" + re.escape(kw) + r"\\b"
+            else:
+                # Convert keyword into a conservative stem by removing common suffixes.
+                # This is not a full NLP stemmer; it’s just enough to tolerate obvious variants.
+                stem = kw
+                for suf in ("ization", "ization", "ization", "synthesis", "ized", "ing", "ed", "s"):
+                    if stem.endswith(suf) and len(stem) - len(suf) >= 3:
+                        stem = stem[: -len(suf)]
+                        break
+
+                # If stemming collapses too far, fall back to exact match.
+                if len(stem) < 3:
+                    pattern = r"\\b" + re.escape(kw) + r"\\b"
+                else:
+                    # stem + optional trailing word chars.
+                    pattern = r"\\b" + re.escape(stem) + r"\\w*\\b"
+
+            total += len(re.findall(pattern, text_lower, flags=re.IGNORECASE))
+
+
+        if total > 0:
+            domain_scores[domain] = total
 
     detected_domain = max(domain_scores, key=domain_scores.get) if domain_scores else "General Research"
-    confidence = min((domain_scores.get(detected_domain, 0) / max(1, len(text_lower.split()))) * 100, 100)
+
+    # Normalized confidence: domain hit count scaled by both (a) total words and (b) keyword count.
+    # This keeps confidence stable for longer papers.
+    hits = float(domain_scores.get(detected_domain, 0))
+    word_count = max(1, len(text_lower.split()))
+    confidence = min((hits / word_count) * 100, 100)
+
 
     domain_stats: Dict[str, Any] = {
         "domain": detected_domain,
@@ -630,7 +673,17 @@ def process_paper_analysis(file_bytes: bytes, file_name: str = "uploaded.pdf") -
 
     summary = extract_summary(text)
     features = extract_features(text)
-    domain_stats = get_domain_stats(text)
+
+    # DEBUG: verify extracted text is intact inside the real RQ job
+    try:
+        print(f"[DEBUG] extracted text len={len(text)}")
+        print(f"[DEBUG] text head repr={repr((text or '')[:100])}")
+    except Exception as e:
+        print(f"[DEBUG] text debug print failed: {e}")
+
+    domain_stats = _shared_get_domain_stats(text, _DATASET)
+
+
 
 
     # Model scoring
