@@ -174,7 +174,10 @@ def get_domain_stats(text: str, dataset: Optional[pd.DataFrame] = None) -> Dict[
             if s.dtype == bool:
                 domain_stats["medline_count"] = int(s.sum())
             else:
-                domain_stats["medline_count"] = int(s.fillna(False).astype(str).str.lower().isin(["true", "1", "yes", "y"]).sum())
+                # Real dataset values are typically: "Medline" / "Medline-unique" (with many NaNs).
+                lower = s.fillna("").astype(str).str.lower()
+                domain_stats["medline_count"] = int(lower.isin(["medline", "medline-unique"]).sum())
+
         else:
             med_series = ds.get("Medline Coverage", pd.Series(dtype=object))
             domain_stats["medline_count"] = len(med_series.astype(str).str.contains("Yes|Indexed", case=False, na=False))
