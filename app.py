@@ -504,7 +504,9 @@ def status(job_id):
         "job_id": job_id,
         "status": job.get_status(),
         "file_name": job.meta.get("file_name"),
+        "stage": job.meta.get("stage"),
     }
+
 
     if job.is_finished:
         payload["result"] = job.result

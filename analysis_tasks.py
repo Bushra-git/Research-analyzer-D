@@ -661,7 +661,28 @@ def generate_recommendations(text: str, features: Dict[str, Any], score: float) 
 # -----------------------------
 
 def process_paper_analysis(file_bytes: bytes, file_name: str = "uploaded.pdf") -> Dict[str, Any]:
+    # Best-effort job progress reporting via RQ current job context.
+    # If not executed inside an RQ job, get_current_job() returns None.
+    try:
+        from rq import get_current_job  # type: ignore
+
+        _job = get_current_job()
+    except Exception:  # pragma: no cover
+        _job = None
+
+    def _set_stage(stage: str) -> None:
+        if _job is None:
+            return
+        try:
+            _job.meta["stage"] = stage
+            _job.save_meta()
+        except Exception:
+            # Progress reporting must never break the job.
+            pass
+
+    _set_stage("extracting_text")
     text = extract_text_from_pdf(file_bytes)
+
 
     # Guard: scanned/corrupted PDFs may yield empty/near-empty text.
     # In that case, stop early and return a clear error payload.
@@ -671,8 +692,12 @@ def process_paper_analysis(file_bytes: bytes, file_name: str = "uploaded.pdf") -
             "file_name": file_name,
         }
 
+    _set_stage("extracting_summary")
     summary = extract_summary(text)
+
+    _set_stage("extracting_features")
     features = extract_features(text)
+
 
     # DEBUG: verify extracted text is intact inside the real RQ job
     try:
@@ -681,12 +706,13 @@ def process_paper_analysis(file_bytes: bytes, file_name: str = "uploaded.pdf") -
     except Exception as e:
         print(f"[DEBUG] text debug print failed: {e}")
 
+    _set_stage("detecting_domain_stats")
     domain_stats = _shared_get_domain_stats(text, _DATASET)
 
 
-
-
+    _set_stage("scoring_model")
     # Model scoring
+
     if _MODEL is None:
         print("Warning: Model not loaded, using default scoring")
         score = 6.5
@@ -701,10 +727,14 @@ def process_paper_analysis(file_bytes: bytes, file_name: str = "uploaded.pdf") -
             score -= 2
 
     score = max(0, min(10, score))
+    _set_stage("generating_recommendations")
     recommendations = generate_recommendations(text, features, score)
 
+
     # Similarity matching + recommendations (isolated + reusable)
+    _set_stage("matching_venues")
     try:
+
         from similarity_matching import compute_similar_papers
 
         domain_for_similarity = domain_stats.get("domain") if isinstance(domain_stats, dict) else None
@@ -724,10 +754,20 @@ def process_paper_analysis(file_bytes: bytes, file_name: str = "uploaded.pdf") -
             sp.pop("_used_full_set", None)
 
     except Exception as e:
-        # Best-effort fallback: keep older behavior when TF-IDF deps are missing.
-        print(f"[WARN] similarity matching failed: {e}")
-        similar_papers = []
+        allow_fallback = os.getenv("ALLOW_SIMILARITY_FALLBACK", "false").lower() == "true"
+        if allow_fallback:
+            print(f"[WARN] similarity matching failed, falling back to empty result: {e}")
+            similar_papers = []
+        else:
+            print(
+                f"[ERROR] similarity matching failed (set ALLOW_SIMILARITY_FALLBACK=true to degrade gracefully instead): {e}"
+            )
+            raise
 
+
+
+
+    _set_stage("done")
 
     return {
         "score": float(score),

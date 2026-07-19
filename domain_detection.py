@@ -16,6 +16,12 @@ DOMAIN_KEYWORDS_SIMPLE: Dict[str, List[str]] = {
         "algorithm",
         "database",
         "software",
+        "blockchain",
+        "cryptocurrency",
+        "distributed ledger",
+        "smart contract",
+        "internet of things",
+        "iot",
     ],
     "Biomedical & Medicine": [
         "medical",

@@ -162,12 +162,11 @@ def compute_similar_papers(
 ) -> List[Dict[str, Any]]:
 
     """Compute top-K similar venues/papers using TF-IDF + cosine similarity.
-
     Returns list of dicts: {title, score}
     """
+    
     if dataset is None or getattr(dataset, "empty", True):
         return []
-
     if not paper_text:
         return []
 
