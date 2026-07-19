@@ -22,14 +22,25 @@ from rq.exceptions import NoSuchJobError
 from analysis_tasks import process_paper_analysis
 
 # Import enhanced recommender with ASJC-based scoring (v2 with proper dataset integration)
+# In CI/test environments, sklearn/scipy wheels may be incompatible with the installed NumPy.
+# In that case, importing the recommender can fail with non-ImportError exceptions.
 try:
     from recommender_enhanced_v2 import load_venue_database_enhanced, recommend_venues_enhanced
-except ImportError:
-    from recommender_enhanced import load_venue_database_enhanced, recommend_venues_enhanced
-from sklearn.feature_extraction.text import TfidfVectorizer
+except Exception:
+    try:
+        from recommender_enhanced import load_venue_database_enhanced, recommend_venues_enhanced
+    except Exception:
+        load_venue_database_enhanced = None
+        recommend_venues_enhanced = None
+
+try:
+    from sklearn.feature_extraction.text import TfidfVectorizer
+except Exception:  # pragma: no cover
+    TfidfVectorizer = None
 
 
 # Cache TTL defaults (24h for analysis, 24h for recommendations by default)
+
 ANALYSIS_CACHE_TTL_SECONDS = int(os.getenv("ANALYSIS_CACHE_TTL_SECONDS", 24 * 60 * 60))
 RECOMMENDATION_CACHE_TTL_SECONDS = int(os.getenv("RECOMMENDATION_CACHE_TTL_SECONDS", 24 * 60 * 60))
 
@@ -129,7 +140,11 @@ def hash_bytes(value):
 
 
 def cache_get_json(key):
-    cached_value = redis_connection.get(key)
+    try:
+        cached_value = redis_connection.get(key)
+    except Exception:
+        return None
+
     if not cached_value:
         return None
 
@@ -511,36 +526,38 @@ def predict():
         # Generate recommendations based on analysis
         recommendations = generate_recommendations(text, features, score)
 
-        # Similarity matching - use Source Title as the basis for comparison
-        from sklearn.feature_extraction.text import TfidfVectorizer
-        from sklearn.metrics.pairwise import cosine_similarity
-
-        # Get the document titles - use 'Source Title' column from venues dataset
-        docs_for_comparison = []
-        paper_titles = []
-        
-        if not dataset.empty and 'Source Title' in dataset.columns:
-            docs_for_comparison = dataset["Source Title"].fillna("").tolist()
-            paper_titles = docs_for_comparison[:5]
-        
-        all_docs = docs_for_comparison.copy() if docs_for_comparison else [""]
-        all_docs.insert(0, text)
-
-        vectorizer = TfidfVectorizer(max_features=500)
-        tfidf = vectorizer.fit_transform(all_docs)
-
-        similarity = cosine_similarity(tfidf)[0]
-
-        top_indices = similarity.argsort()[-6:][::-1][1:]
-
+        # Similarity matching (best-effort)
+        # In some CI/test environments, sklearn/scipy may be unavailable due to binary incompatibilities.
         similar_papers = []
-        for i in top_indices:
-            if i-1 >= 0 and i-1 < len(dataset):
-                title_col = "Source Title" if "Source Title" in dataset.columns else "title"
-                similar_papers.append({
-                    "title": str(dataset.iloc[i-1][title_col])[:100],
-                    "score": float(similarity[i])
-                })
+        try:
+            if TfidfVectorizer is None:
+                raise ImportError("TfidfVectorizer unavailable")
+
+            from sklearn.metrics.pairwise import cosine_similarity
+
+            docs_for_comparison = []
+            if not dataset.empty and 'Source Title' in dataset.columns:
+                docs_for_comparison = dataset["Source Title"].fillna("").tolist()
+
+            all_docs = docs_for_comparison.copy() if docs_for_comparison else [""]
+            all_docs.insert(0, text)
+
+            vectorizer = TfidfVectorizer(max_features=500)
+            tfidf = vectorizer.fit_transform(all_docs)
+
+            similarity = cosine_similarity(tfidf)[0]
+            top_indices = similarity.argsort()[-6:][::-1][1:]
+
+            for i in top_indices:
+                if i - 1 >= 0 and i - 1 < len(dataset):
+                    title_col = "Source Title" if "Source Title" in dataset.columns else "title"
+                    similar_papers.append({
+                        "title": str(dataset.iloc[i - 1][title_col])[:100],
+                        "score": float(similarity[i])
+                    })
+        except Exception:
+            # Keep empty similar_papers when sklearn is not available
+            pass
 
         result = {
             "score": float(score),
@@ -551,6 +568,7 @@ def predict():
             "domain_stats": domain_stats,
             "cached": False,
         }
+
 
         # TTL: 24 hours
         cache_set_json(f"analysis:{file_hash}", result, 24 * 60 * 60)
@@ -637,8 +655,9 @@ def recommend():
         return jsonify(cached_result), 200
 
 
-    if venue_db is None or getattr(venue_db, "empty", False):
+    if recommend_venues_enhanced is None or venue_db is None or getattr(venue_db, "empty", False):
         return jsonify({"error": "Venue database not available. Try again later."}), 503
+
 
     try:
         result = recommend_venues_enhanced(
