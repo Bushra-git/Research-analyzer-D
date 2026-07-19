@@ -130,9 +130,12 @@ def get_domain_stats(text: str, dataset: Optional[pd.DataFrame] = None) -> Dict[
     domain_scores = _count_domain_keyword_hits(text_lower)
     detected_domain = max(domain_scores, key=domain_scores.get) if domain_scores else "General Research"
 
-    hits = float(domain_scores.get(detected_domain, 0))
-    word_count = max(1, len(text_lower.split()))
-    confidence = min((hits / word_count) * 100, 100)
+    # Confidence: normalize against ALL domain keyword hit counts.
+    # If all domains have 0 hits, confidence is 0.
+    winning_domain_score = float(domain_scores.get(detected_domain, 0))
+    sum_of_all_domain_scores = float(sum(domain_scores.values()))
+    confidence = (winning_domain_score / sum_of_all_domain_scores) * 100 if sum_of_all_domain_scores > 0 else 0.0
+
 
     # 2) dataset stats
     dataset_is_empty = dataset is None or getattr(dataset, "empty", True)
